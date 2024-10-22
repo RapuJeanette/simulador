@@ -1,3 +1,5 @@
+from datetime import date, datetime
+from email import errors
 from typing import List, Optional
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException
@@ -107,6 +109,64 @@ async def actualizar_doctor(doctor_id: str, doctor_actualizado: Doctor):
 @app.delete("/doctores/{doctor_id}")
 async def eliminar_doctor(doctor_id: str):
     result = doctores.delete_one({"_id": ObjectId(doctor_id)})  # Eliminar por _id
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor no encontrado")
+    return {"mensaje": "Doctor eliminado"}
+
+class Pago(BaseModel):
+    id: Optional[str] = Field(None)
+    monto: float
+    estado: str  # Puede ser 'pendiente' o 'completado'
+    fecha: datetime
+
+db = client['simulador']
+pagos_db= db['pago']
+
+@app.post("/pagos/", response_model=Pago)
+def crear_pago(pago: Pago):
+    nuevo_pago = pago.dict()  
+    if isinstance(nuevo_pago['fecha'], date):  # Si es un objeto date, convertir a datetime
+        nuevo_pago['fecha'] = datetime.combine(nuevo_pago['fecha'], datetime.min.time())
+    pagos_db.insert_one(nuevo_pago)
+    nuevo_pago['id'] = str(nuevo_pago['_id']) 
+    return nuevo_pago
+
+@app.get("/pagos/", response_model=List[Pago])
+async def obtener_pagos():
+      try:
+          pagos = list(db.pago.find())
+          for pago in pagos:
+             pago['id'] = str(pago['_id'])  
+          return pagos
+      except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/pagos/{pago_id}", response_model=Pago)
+async def obtener_pago_por_id(pago_id: str):
+    pago = pagos_db.find_one({"_id": ObjectId(pago_id)})
+    if pago:
+        pago['id'] = str(pago['_id'])  # Convertir ObjectId a string
+        return pago
+    raise HTTPException(status_code=404, detail="Doctor no encontrado")
+
+@app.put("/pagos/{pago_id}", response_model=Pago)
+async def actualizar_pago(pago_id: str, pago_actualizado: Pago):
+    result = pagos_db.update_one(
+        {"_id": ObjectId(pago_id)},
+        {"$set": pago_actualizado.dict()}
+    )
+    if result.matched_count == 0:
+        raise HTTPException (status_code=404, detail="Pago no encontrado")
+    
+    pago_actualizado_db = pagos_db.find_one({"_id":
+        ObjectId(pago_id)})
+    pago_actualizado_db['id'] = str(pago_actualizado_db['_id'])
+    return pago_actualizado_db
+
+# Eliminar un pago por ID
+@app.delete("/pagos/{pago_id}")
+async def eliminar_pago(pago_id: str):
+    result = pagos_db.delete_one({"_id": ObjectId(pago_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Doctor no encontrado")
     return {"mensaje": "Doctor eliminado"}
