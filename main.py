@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Optional
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from bson.objectid import ObjectId 
 from pymongo import MongoClient
 import bcrypt
@@ -52,7 +52,7 @@ class DoctorCreate(BaseModel):
 
 # Modelo para responder con 'id'
 class Doctor(BaseModel):
-    id: str
+    id: Optional[str] = Field(None)
     telefono: str
     especialidad: str
     disponibilidad: str
@@ -91,7 +91,7 @@ async def obtener_doctor(doctor_id: str):
 async def actualizar_doctor(doctor_id: str, doctor_actualizado: Doctor):
     result = doctores.update_one(
         {"_id": ObjectId(doctor_id)},  # Buscar por _id
-        {"$set": doctor_actualizado.dict(exclude={"id"})}  # Excluir el campo id del update
+        {"$set": doctor_actualizado.dict()}  # Excluir el campo id del update
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Doctor no encontrado")
