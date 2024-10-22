@@ -1,6 +1,9 @@
+from typing import List
+from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
+from bson.objectid import ObjectId 
 from pymongo import MongoClient
 import bcrypt
 
@@ -42,10 +45,71 @@ async def crear_usuario(usuario: Usuario):
     
     return {"message": "Usuario creado exitosamente"}
 
-@app.get("/usuarios/")
-async def obtener_usuarios():
-    usuarios = list(usuarios.find({}, {"_id": 1, "contraseña": 0}))  # Excluir _id y contraseña
-    return {"usuarios": usuarios}
+class DoctorCreate(BaseModel):
+    telefono: str
+    especialidad: str
+    disponibilidad: str
+
+# Modelo para responder con 'id'
+class Doctor(BaseModel):
+    id: str
+    telefono: str
+    especialidad: str
+    disponibilidad: str
+
+db = client['simulador']
+doctores = db['doctor']
+
+@app.post("/doctores/", response_model=Doctor)
+def crear_doctor(doctor: DoctorCreate):
+    nuevo_doctor = doctor.dict()  # Convertir el doctor a diccionario
+    nuevo_doctor['id'] = str(uuid4())  # Generar ID único
+    doctores.insert_one(nuevo_doctor)  # Insertar en MongoDB
+    return nuevo_doctor 
+
+@app.get("/doctores/", response_model=List[Doctor])
+async def obtener_doctores():
+    try:
+        doctore = list(doctores.find()) 
+        for doctor in doctore:
+            doctor['id'] = str(doctor['_id']) 
+        return doctore
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/doctores/{doctor_id}", response_model=Doctor)
+async def obtener_doctor(doctor_id: str):
+    doctor = doctores.find_one({"_id": ObjectId(doctor_id)})  # Buscar el doctor por _id
+    if doctor:
+        doctor['id'] = str(doctor['_id'])  # Convertir ObjectId a string
+        del doctor['_id']  # Eliminar el campo _id
+        return doctor
+    raise HTTPException(status_code=404, detail="Doctor no encontrado")
+
+# Actualizar un doctor
+@app.put("/doctores/{doctor_id}", response_model=Doctor)
+async def actualizar_doctor(doctor_id: str, doctor_actualizado: Doctor):
+    result = doctores.update_one(
+        {"_id": ObjectId(doctor_id)},  # Buscar por _id
+        {"$set": doctor_actualizado.dict(exclude={"id"})}  # Excluir el campo id del update
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor no encontrado")
+    
+    # Obtener el doctor actualizado
+    doctor_actualizado_db = doctores.find_one({"_id": ObjectId(doctor_id)})
+    doctor_actualizado_db['id'] = str(doctor_actualizado_db['_id'])
+    del doctor_actualizado_db['_id']
+    
+    return doctor_actualizado_db
+
+# Eliminar un doctor
+@app.delete("/doctores/{doctor_id}")
+async def eliminar_doctor(doctor_id: str):
+    result = doctores.delete_one({"_id": ObjectId(doctor_id)})  # Eliminar por _id
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor no encontrado")
+    return {"mensaje": "Doctor eliminado"}
 
 @app.get("/")
 def read_root():
